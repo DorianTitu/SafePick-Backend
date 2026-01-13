@@ -1,0 +1,87 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PARENT
+  GUARDIAN
+  ADMIN
+  PICKER
+}
+
+enum WithdrawalStatus {
+  PENDING
+  VALIDATED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String
+  role      UserRole
+  cedula    String?   @unique
+  phone     String?
+  children  Child[]
+  withdrawalOrders WithdrawalOrder[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Child {
+  id        String    @id @default(cuid())
+  name      String
+  grade     String
+  school    String
+  parentId  String
+  parent    User      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  withdrawalOrders WithdrawalOrder[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("children")
+}
+
+model Picker {
+  id                String    @id @default(cuid())
+  name              String
+  cedula            String    @unique
+  phone             String
+  relationship      String    // padre, tío, abuelo, etc.
+  withdrawalOrderId String    @unique
+  withdrawalOrder   WithdrawalOrder @relation(fields: [withdrawalOrderId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
+
+  @@map("pickers")
+}
+
+model WithdrawalOrder {
+  id              String              @id @default(cuid())
+  childId         String
+  child           Child               @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parentId        String
+  parent          User                @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  picker          Picker?
+  status          WithdrawalStatus    @default(PENDING)
+  qrCode          String?
+  withdrawalDate  DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@map("withdrawal_orders")
+}
