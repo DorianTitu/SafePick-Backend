@@ -1,14 +1,18 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateUserDto, LoginDto } from '../common/dtos';
-import * as bcrypt from 'bcryptjs';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { PrismaService } from "../prisma/prisma.service";
+import { CreateUserDto, LoginDto } from "../common/dtos";
+import * as bcrypt from "bcryptjs";
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
-    private jwtService: JwtService,
+    private jwtService: JwtService
   ) {}
 
   async register(createUserDto: CreateUserDto) {
@@ -17,7 +21,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException("Email already registered");
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
@@ -41,7 +45,7 @@ export class AuthService {
       name: user.name,
       role: user.role,
       token,
-      message: 'User created successfully. Welcome email has been sent.',
+      message: "User created successfully. Welcome email has been sent.",
     };
   }
 
@@ -51,13 +55,16 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password
+    );
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException("Invalid credentials");
     }
 
     const token = this.jwtService.sign({
@@ -72,6 +79,7 @@ export class AuthService {
       name: user.name,
       role: user.role,
       token,
+      accessToken: token, // Por compatibilidad
     };
   }
 
@@ -79,5 +87,81 @@ export class AuthService {
     return await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
+  }
+
+  // Login para pickers temporales con cédula y código
+  async loginPicker(cedula: string, temporaryCode: string) {
+    const picker = (await this.prisma.picker.findUnique({
+      where: { cedula },
+      include: {
+        withdrawalOrder: {
+          include: {
+            child: true,
+            parent: {
+              select: {
+                name: true,
+                phone: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    })) as any;
+
+    if (!picker) {
+      throw new UnauthorizedException("Cédula no encontrada o no autorizada");
+    }
+
+    // Verificar que el picker está activo
+    if (picker.isActive === false) {
+      throw new UnauthorizedException("Este código ha sido desactivado");
+    }
+
+    // Verificar expiración
+    const now = new Date();
+    if (picker.codeExpiresAt && now > new Date(picker.codeExpiresAt)) {
+      throw new UnauthorizedException("El código temporal ha expirado");
+    }
+
+    // Verificar el código temporal
+    const hashedPassword = picker.temporaryPassword;
+    if (!hashedPassword) {
+      throw new UnauthorizedException(
+        "No hay credenciales temporales configuradas"
+      );
+    }
+
+    const isCodeValid = await bcrypt.compare(temporaryCode, hashedPassword);
+
+    if (!isCodeValid) {
+      throw new UnauthorizedException("Código temporal inválido");
+    }
+
+    // Generar token JWT para el picker
+    const token = this.jwtService.sign({
+      sub: picker.id,
+      cedula: picker.cedula,
+      role: "PICKER",
+      type: "temporary",
+      orderId: picker.withdrawalOrderId,
+    });
+
+    return {
+      id: picker.id,
+      name: picker.name,
+      cedula: picker.cedula,
+      role: "PICKER",
+      type: "temporary",
+      token,
+      withdrawalOrder: {
+        id: picker.withdrawalOrder.id,
+        status: picker.withdrawalOrder.status,
+        qrCode: picker.withdrawalOrder.qrCode,
+        child: picker.withdrawalOrder.child,
+        parent: picker.withdrawalOrder.parent,
+      },
+      expiresAt: picker.codeExpiresAt,
+    };
   }
 }

@@ -1,14 +1,19 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import helmet from 'helmet';
-import { AppModule } from './app.module';
-import { SecretsService } from './config/secrets.service';
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe } from "@nestjs/common";
+import helmet from "helmet";
+import { AppModule } from "./app.module";
+import { SecretsService } from "./config/secrets.service";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // ✅ Security: Helmet for HTTP security headers
-  app.use(helmet());
+  // ✅ Security: Helmet for HTTP security headers (more permissive in development)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    })
+  );
 
   // ✅ Global validation pipe
   app.useGlobalPipes(
@@ -19,7 +24,7 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
-    }),
+    })
   );
 
   // ✅ CORS configuration (restrictive)
@@ -29,36 +34,40 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["X-Total-Count", "X-Page-Count"],
     maxAge: 3600,
   });
 
   // ✅ Additional security headers
   app.use((req, res, next) => {
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
-    res.removeHeader('X-Powered-By');
-    res.setHeader('Server', 'SafePick/1.0');
+    res.setHeader(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains; preload"
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader(
+      "Permissions-Policy",
+      "geolocation=(), microphone=(), camera=()"
+    );
+    res.removeHeader("X-Powered-By");
+    res.setHeader("Server", "SafePick/1.0");
     next();
   });
 
-  const port = process.env.PORT || 3000;
-  const host = process.env.HOST || 'localhost';
-  const env = process.env.NODE_ENV || 'development';
+  const port = process.env.PORT || 3001;
+  const host = process.env.HOST || "localhost";
+  const env = process.env.NODE_ENV || "development";
 
   await app.listen(port, host);
-  console.log(
-    `✅ SafePick API running on http://${host}:${port} [${env}]`,
-  );
+  console.log(`✅ SafePick API running on http://${host}:${port} [${env}]`);
 }
 
 bootstrap().catch((err) => {
-  console.error('❌ Application failed to start:', err.message);
+  console.error("❌ Application failed to start:", err.message);
   process.exit(1);
 });
